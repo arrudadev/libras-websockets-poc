@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import '@tensorflow/tfjs-backend-webgl'
 import * as mpHands from '@mediapipe/hands'
@@ -9,11 +9,27 @@ tfjsWasm.setWasmPaths(
   `https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-wasm@${tfjsWasm.version_wasm}/dist/`,
 )
 
+const socket = new WebSocket('ws://localhost:8000/ws')
+
+socket.onopen = () => {
+  console.log('WebSocket Client Connected')
+}
+
+socket.onerror = (error) => {
+  console.log('WebSocket Connection Error: ' + error.toString())
+}
+
 export function App() {
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const frame = useRef(0)
   let detector: handPoseDetection.HandDetector | null = null
+  const [result, setResult] = useState('')
+  const [coordinates, setCoordinates] = useState([] as any[])
+
+  socket.onmessage = (message) => {
+    setResult(message.data)
+  }
 
   async function setupVideo() {
     const video = videoRef.current
@@ -95,20 +111,12 @@ export function App() {
       })
 
       if (handsPredictions?.length) {
-        console.log(handsPredictions)
         const landmarks = handsPredictions[0].keypoints3D as any[]
-        const coordinates = landmarkCoordinates(landmarks)
+        const landmarksCoordinates = landmarkCoordinates(landmarks)
 
-        const response = await fetch('http://localhost:8000/predict/', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ landmarks: coordinates }),
-        })
-
-        const data = await response.json()
-        console.log(data)
+        if (landmarksCoordinates.length === 42) {
+          setCoordinates(landmarksCoordinates)
+        }
       }
     }
   }
@@ -141,6 +149,12 @@ export function App() {
     estimateHands()
 
     frame.current = requestAnimationFrame(handleVideoFrame)
+  }
+
+  function handleTranslateSignal() {
+    if (coordinates) {
+      socket.send(JSON.stringify({ landmarks: coordinates }))
+    }
   }
 
   useEffect(() => {
@@ -182,6 +196,24 @@ export function App() {
           id="video"
           playsInline
         ></video>
+
+        <span className="mt-8 text-gray-600 text-md">
+          Faça o sinal para a camera e aperte em traduzir para ver o resultado
+        </span>
+
+        <button
+          type="button"
+          className="h-14 w-32 flex items-center justify-center rounded-md bg-blue-600 text-white font-bold px-4 mt-8 text-lg"
+          onClick={handleTranslateSignal}
+        >
+          Traduzir
+        </button>
+
+        {result && (
+          <p className="mt-8 text-center text-2xl text-black font-bold">
+            Resultado: {result}
+          </p>
+        )}
       </div>
     </main>
   )
