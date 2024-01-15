@@ -68,6 +68,24 @@ export function App() {
     }
   }
 
+  function landmarkCoordinates(landmarks: any[]) {
+    const coordinates: any[] = []
+    const coordinatesX: any[] = []
+    const coordinatesY: any[] = []
+
+    landmarks.forEach((landmark) => {
+      coordinatesX.push(landmark.x)
+      coordinatesY.push(landmark.y)
+    })
+
+    landmarks.forEach((landmark) => {
+      coordinates.push(landmark.x - Math.min(...coordinatesX))
+      coordinates.push(landmark.y - Math.min(...coordinatesY))
+    })
+
+    return coordinates
+  }
+
   async function estimateHands() {
     const video = videoRef.current
 
@@ -76,7 +94,22 @@ export function App() {
         flipHorizontal: false,
       })
 
-      console.log(handsPredictions)
+      if (handsPredictions?.length) {
+        console.log(handsPredictions)
+        const landmarks = handsPredictions[0].keypoints3D as any[]
+        const coordinates = landmarkCoordinates(landmarks)
+
+        const response = await fetch('http://localhost:8000/predict/', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ landmarks: coordinates }),
+        })
+
+        const data = await response.json()
+        console.log(data)
+      }
     }
   }
 
