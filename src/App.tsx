@@ -1,9 +1,19 @@
 import { useEffect, useRef } from 'react'
 
+import '@tensorflow/tfjs-backend-webgl'
+import * as mpHands from '@mediapipe/hands'
+import * as tfjsWasm from '@tensorflow/tfjs-backend-wasm'
+import * as handPoseDetection from '@tensorflow-models/hand-pose-detection'
+
+tfjsWasm.setWasmPaths(
+  `https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-wasm@${tfjsWasm.version_wasm}/dist/`,
+)
+
 export function App() {
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const frame = useRef(0)
+  let detector: handPoseDetection.HandDetector | null = null
 
   async function setupVideo() {
     const video = videoRef.current
@@ -47,7 +57,7 @@ export function App() {
   function drawVideoInCanvas() {
     const video = videoRef.current
     const canvas = canvasRef.current
-    console.log('drawVideoInCanvas')
+
     if (video && canvas) {
       const ctx = canvas.getContext('2d')
 
@@ -56,18 +66,48 @@ export function App() {
         ctx.drawImage(video, 0, 0, video.width, video.height)
       }
     }
+  }
 
-    handleVideoFrame()
+  async function estimateHands() {
+    const video = videoRef.current
+
+    if (video) {
+      const handsPredictions = await detector?.estimateHands(video, {
+        flipHorizontal: false,
+      })
+
+      console.log(handsPredictions)
+    }
+  }
+
+  async function loadDetector() {
+    if (!detector) {
+      const detectorConfig = {
+        runtime: 'mediapipe' as const,
+        modelType: 'full' as const,
+        maxHands: 2,
+        solutionPath: `https://cdn.jsdelivr.net/npm/@mediapipe/hands@${mpHands.VERSION}`,
+      }
+
+      detector = await handPoseDetection.createDetector(
+        handPoseDetection.SupportedModels.MediaPipeHands,
+        detectorConfig,
+      )
+    }
   }
 
   async function init() {
     await setupVideo()
     setupCanvas()
+    await loadDetector()
     handleVideoFrame()
   }
 
   function handleVideoFrame() {
-    frame.current = requestAnimationFrame(drawVideoInCanvas)
+    drawVideoInCanvas()
+    estimateHands()
+
+    frame.current = requestAnimationFrame(handleVideoFrame)
   }
 
   useEffect(() => {
